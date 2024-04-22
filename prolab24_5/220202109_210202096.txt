@@ -1,0 +1,391 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <TM1637.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+#define SCREEN_ADDRESS 0x3C
+
+const int CLK = 2;
+const int DIO = 3;
+const int LDR = 4;
+int ledPins[] = {5, 6, 7};
+const int buttonPin = 8;
+int potValue2 = 0;
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+TM1637 tm(CLK, DIO);
+
+
+#define BRICK_WIDTH 10
+#define BRICK_HEIGHT 6
+#define BRICK_GAP 2
+#define BRICK_ROWS 4
+#define BRICK_COLUMNS 10
+
+#define BALL_RADIUS 2
+int ball_x = SCREEN_WIDTH / 2;
+int ball_y = SCREEN_HEIGHT / 2;
+int ball_speed_x = 2; 
+int ball_speed_y = 2;
+
+#define PADDLE_WIDTH 30
+#define PADDLE_HEIGHT 2
+int paddle_x = (SCREEN_WIDTH - PADDLE_WIDTH) / 2;
+#define PADDLE_Y SCREEN_HEIGHT -1
+
+#define POTENTIOMETER_PIN A0
+
+int bricks[BRICK_ROWS][BRICK_COLUMNS];
+
+int score = 0;
+int can = 3;
+int ii = 0;
+
+bool gameStarted = false;
+bool startGame = false;
+bool menuSelected = false;
+
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(LDR, INPUT);
+
+  tm.init();
+  tm.set(BRIGHT_TYPICAL);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println(F("SSD1306 başlatılamadı. Bağlantıyı kontrol edin."));
+    while (true);
+  }
+
+
+  randomSeed(analogRead(0)); 
+  int placed_bricks = 0; 
+  while (placed_bricks < 30) { 
+    int row = random(BRICK_ROWS);
+    int col = random(BRICK_COLUMNS); 
+    if (bricks[row][col] == 0) { 
+      bricks[row][col] = 1; 
+      placed_bricks++; 
+    }
+  }
+  for (int i = 0; i < 3; i++) {
+    pinMode(ledPins[i], OUTPUT);
+  }
+
+
+  int previousButtonState = HIGH;
+}
+
+int previousButtonState = HIGH;
+int buttonState;
+
+bool buttonPressed = false;
+
+void loop() {
+  buttonState = digitalRead(buttonPin);
+
+  if(digitalRead(LDR) == LOW){
+    display.invertDisplay(true);
+  }
+  else{
+    display.invertDisplay(false);
+  }
+
+  if (buttonState != previousButtonState) {
+  
+    if (buttonState == LOW) {
+      buttonPressed = true; 
+    }
+    
+    else {
+      buttonPressed = false;
+    }
+    
+    previousButtonState = buttonState;
+  }
+
+  potValue2 = analogRead(POTENTIOMETER_PIN);
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
+  if (!menuSelected) {
+    if (potValue2 < 512) {
+      display.setCursor(44, 21);
+      display.setTextColor(BLACK, WHITE);
+      display.println("BASLAT");
+      display.setTextColor(WHITE);
+      display.setCursor(44, 32); 
+      display.println("CIKIS");
+
+      if (buttonPressed) {
+        menuSelected = true;
+        gameStarted = true;
+      }
+    } else {
+      display.setCursor(44, 21);
+      display.setTextColor(WHITE);
+      display.println("BASLAT");
+      display.setTextColor(BLACK, WHITE);
+      display.setCursor(44, 32);
+      display.println("CIKIS");
+      if (buttonPressed) {
+        menuSelected = true;
+        gameStarted = false;
+      }
+    }
+
+    display.display();
+  } else {
+    if (gameStarted) {
+      startGame = true; 
+      startGameLoop();
+    }
+    else {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setTextColor(WHITE);
+      display.setCursor(0, 0);
+      display.println("OYUNUMUZA GOSTERDIGINILGI ICIN TESEKKURLER!!!!!!");
+      display.display();
+      delay(3000); 
+      menuSelected = false;
+      gameStarted = false;
+      buttonPressed = false;
+    }
+
+  }
+
+}
+
+
+void startGameLoop() {
+
+  display.clearDisplay();
+  tm.display(0, (score / 1000) % 10);
+  tm.display(1, (score / 100) % 10);
+  tm.display(2, (score / 10) % 10);
+  tm.display(3, score % 10);
+
+
+  if (can > 0) {
+    switch (can) {
+      case 0:
+        digitalWrite(ledPins[0], LOW);
+        digitalWrite(ledPins[1], LOW);
+        digitalWrite(ledPins[2], LOW);
+        break;
+
+      case 1:
+        digitalWrite(ledPins[0], LOW);
+        digitalWrite(ledPins[1], LOW);
+        digitalWrite(ledPins[2], HIGH);
+        break;
+
+      case 2:
+        digitalWrite(ledPins[0], LOW);
+        digitalWrite(ledPins[1], HIGH);
+        digitalWrite(ledPins[2], HIGH);
+        break;
+
+
+      default:
+        digitalWrite(ledPins[0], HIGH);
+        digitalWrite(ledPins[1], HIGH);
+        digitalWrite(ledPins[2], HIGH);
+        break;
+    }
+  }
+  else {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 0);
+    digitalWrite(ledPins[2], LOW);
+    display.println("TUM CANLARIN BITTI!");
+    display.println("");
+    display.print("SCORE:");
+    display.print(score);
+    display.display();
+
+    delay(4000); 
+
+    menuSelected = false;
+    gameStarted = false;
+    buttonPressed = false;
+    can = 3;
+    score = 0;
+    for (int i = 0; i < BRICK_ROWS; i++) {
+      for (int j = 0; j < BRICK_COLUMNS; j++) {
+        bricks[i][j] = 0;
+      }
+    }
+
+
+  }
+
+  drawBall();
+
+
+  int dropProbability = 2;
+  for (int i = 0; i < BRICK_ROWS; i++) {
+    for (int j = 0; j < BRICK_COLUMNS; j++) {
+      if (bricks[i][j] == 1) {
+        int brick_x = j * (BRICK_WIDTH + BRICK_GAP);
+        int brick_y = i * (BRICK_HEIGHT + BRICK_GAP);
+        display.fillRect(brick_x, brick_y, BRICK_WIDTH, BRICK_HEIGHT, WHITE);
+
+        if (ball_y - BALL_RADIUS <= brick_y + BRICK_HEIGHT &&
+            ball_y + BALL_RADIUS >= brick_y &&
+            ball_x - BALL_RADIUS <= brick_x + BRICK_WIDTH &&
+            ball_x + BALL_RADIUS >= brick_x) {
+          bricks[i][j] = 0; 
+          score++;
+          int randomValue = random(1, 11); 
+          /*if (randomValue == dropProbability) {
+            int triangleHeight = 10; 
+            int triangleWidth = 10; 
+            int triangleSpeed = 1; 
+
+            int triangle_x = brick_x + (BRICK_WIDTH - triangleWidth) / 2; 
+            int triangle_y = brick_y + BRICK_HEIGHT / 2; 
+
+           
+            for (int k = 0; k <= PADDLE_Y - (brick_y + BRICK_HEIGHT); k += triangleSpeed) { 
+
+              
+              int new_triangle_y = triangle_y + k; 
+              display.drawTriangle(triangle_x, new_triangle_y, triangle_x - triangleWidth / 2, new_triangle_y + triangleHeight, triangle_x + triangleWidth / 2, new_triangle_y + triangleHeight, WHITE);
+
+              drawBall();
+              
+              display.display();
+
+              display.drawTriangle(triangle_x, new_triangle_y, triangle_x - triangleWidth / 2, new_triangle_y + triangleHeight, triangle_x + triangleWidth / 2, new_triangle_y + triangleHeight, BLACK);
+            }
+          }*/
+
+          ball_speed_y = -ball_speed_y; 
+        }
+      }
+    }
+  }
+  bool all_bricks_destroyed = true;
+  for (int i = 0; i < BRICK_ROWS; i++) {
+    for (int j = 0; j < BRICK_COLUMNS; j++) {
+      if (bricks[i][j] == 1) {
+        all_bricks_destroyed = false;
+        break; 
+      }
+    }
+    if (!all_bricks_destroyed) {
+      break; 
+    }
+  }
+
+  
+  if (all_bricks_destroyed) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0, 0);
+    display.println("Lutfen bekleyiniz...");
+    display.display();
+    delay(4000); 
+    can++;
+    if (can > 3) {
+      can = 3;
+    }
+    resetGame(); 
+  }
+
+
+
+  display.display();
+}
+
+void resetGame() {
+
+  randomSeed(analogRead(0));
+  int placed_bricks = 0;
+  while (placed_bricks < 30) { 
+    int row = random(BRICK_ROWS); 
+    int col = random(BRICK_COLUMNS); 
+    if (bricks[row][col] == 0) { 
+      bricks[row][col] = 1; 
+      placed_bricks++; 
+    }
+  }
+
+
+  ball_x = SCREEN_WIDTH / 2;
+  ball_y = SCREEN_HEIGHT / 2;
+  ball_speed_x += ball_speed_x * 0.2;
+  ball_speed_y += ball_speed_y * 0.2;
+
+
+  paddle_x = (SCREEN_WIDTH - PADDLE_WIDTH) / 2;
+}
+
+void drawBall(){
+
+  display.fillCircle(ball_x, ball_y, BALL_RADIUS, BLACK); 
+  display.fillRect(paddle_x, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, BLACK); 
+
+  
+  int potValue = analogRead(POTENTIOMETER_PIN);
+
+  paddle_x = map(potValue, 0, 1023, 0, SCREEN_WIDTH - PADDLE_WIDTH);
+
+  ball_x += ball_speed_x;
+  ball_y += ball_speed_y;
+
+
+  if (ball_x - BALL_RADIUS <= 0 || ball_x + BALL_RADIUS >= SCREEN_WIDTH) {
+    ball_speed_x = -ball_speed_x; 
+  }
+  if (ball_y - BALL_RADIUS <= 0) {
+    ball_speed_y = -ball_speed_y; 
+  }
+
+
+  if (ball_y + BALL_RADIUS >= PADDLE_Y && ball_x >= paddle_x && ball_x <= paddle_x + PADDLE_WIDTH) {
+    ball_speed_y = -ball_speed_y; 
+  }
+
+
+  if (ball_y + BALL_RADIUS > SCREEN_HEIGHT) {
+
+    ball_x = paddle_x + PADDLE_WIDTH / 2;
+    ball_y = PADDLE_Y - BALL_RADIUS - 1;
+
+    score -= 5;
+    can--;
+    if (score < 0) {
+      score = 0;
+    }
+  }
+
+  for (int i = 0; i < BRICK_ROWS; i++) {
+    for (int j = 0; j < BRICK_COLUMNS; j++) {
+      if (bricks[i][j] == 1) {
+        int brick_x = j * (BRICK_WIDTH + BRICK_GAP);
+        int brick_y = i * (BRICK_HEIGHT + BRICK_GAP);
+        display.fillRect(brick_x, brick_y, BRICK_WIDTH, BRICK_HEIGHT, WHITE);
+      }
+    }
+  }
+
+
+  display.fillCircle(ball_x, ball_y, BALL_RADIUS, WHITE);
+
+  display.fillRect(paddle_x, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, WHITE);
+
+}
